@@ -1,37 +1,50 @@
-import {useEffect, useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 
-type Message = {
+type Message<T> = {
   id: string;
-  message: any
+  message: T
 }
 
-type StreamResponse = {
-  name: string;
-  messages: Array<Message>
+type StreamResponse<k extends string, T> = {
+  name: k;
+  messages: Array<Message<T>>
 }
 
-type Streams = Record<string, string>
+type StreamMessages = Record<string, string>
 
-export default function useStream(keys: Array<string>, end = false) {
-  const [responses, setResponses] = useState<Record<string, any>>(keys.reduce((acc, key) => ({...acc, [key]: null}),{}));
+type StreamHandlers<T extends [string, (arg: any) => void]> = Record<string, (result: Parameters<T[1]>[0]) => void>
+
+export default function useStream<T extends [string, (arg: any) => void]>(
+  handlers: StreamHandlers<T>,
+  stopStreaming = false,
+  url = '/api/streams/read'
+) {
+
   const [isWaiting, setIsWaiting] = useState(false);
-  const [streams, setStreams] = useState<Streams>(keys.reduce((acc, key) => ({...acc, [key]: '$'}),{}))
+  const [streams, setStreams] = useState<StreamMessages>(
+    Object.keys(handlers).reduce((acc, key) => ({...acc, [key]: '$'}),{})
+  )
   const [errorCount, setErrorCount] = useState(0);
   const [callerId, setCallerId] = useState('')
 
-  const getData = () => {
+  const getData = useCallback(() => {
     setIsWaiting(true)
-    fetch(`/api/streams/read`, {
+    fetch(url, {
       method: 'POST',
       body: JSON.stringify({
         streams: Object.entries(streams).map(([key, lastId]) => ({key, id: lastId})),
         callerId
       })})
-      .then(res => res.json() as unknown as {result: Array<StreamResponse>, callerId: string})
+      .then(res => res.json() as unknown as {
+        result: Array<StreamResponse<keyof typeof handlers, Parameters<typeof handlers[keyof typeof handlers]>[0]>>,
+        callerId: string
+      })
       .then(({result, callerId} )=> {
         setCallerId(callerId)
-        setStreams(result.reduce((acc, {name, messages}) => ({...acc,[name]: messages[0].id}),streams))
-        setResponses(result.reduce((acc, {name, messages}) => ({...acc,[name]: messages[0].message}),responses))
+        for(const streamResult of result) {
+          handlers[streamResult.name](streamResult.messages[0].message)
+          setStreams(prevStreams => ({...prevStreams, [streamResult.name]: streamResult.messages[0].id}))
+        }
       })
       .catch(() => {
         console.log('got error')
@@ -41,12 +54,14 @@ export default function useStream(keys: Array<string>, end = false) {
       .finally(() => {
         setIsWaiting(false)
       })
-  }
+  }, [callerId, handlers, streams, url])
 
   useEffect(() => {
-    if(isWaiting || errorCount > 2 || end) return;
+    if(
+      isWaiting ||
+      errorCount > 2 ||
+      stopStreaming
+    ) return;
     getData()
-  }, [isWaiting, end, errorCount])
-
-  return responses
+  }, [isWaiting, stopStreaming, errorCount, getData])
 }
