@@ -99,11 +99,11 @@ export default function TextArea({id, editable = true, savedOptions}: Props) {
   return (
     <ContextMenu
       disabled={!editable}
-      items={VARIANTS.map(variant => ({
+      items={VARIANTS.map((variant, i) => ({
           type: "RadioGroup",
           label: variant.name,
           value: options[variant.name],
-          withSeparator: true,
+          withSeparator: i < VARIANTS.length -1,
           onValueChange: (value) => dispatchOptions({[variant.name]: value}),
           options: Object.keys(variant.variant)
       }))}
