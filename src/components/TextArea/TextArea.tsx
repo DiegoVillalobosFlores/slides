@@ -1,69 +1,61 @@
 'use client'
 
-import {useEffect, useState} from 'react'
+import {useCallback, useEffect, useReducer, useState} from 'react'
 import {motion, useAnimationControls} from "framer-motion";
 import styles from './TextArea.module.scss'
-import * as ContextMenu from "@radix-ui/react-context-menu";
 import TextAreaFont from "@/components/TextArea/TextAreaFont";
 import Options from "@/types/Options";
 import {alignVariants, colorVariants, justifyVariants} from "@/utils/variables";
 import useStream from "@/utils/useStream";
-import {k} from "@/services/redis/options";
-import {k as textKeys} from "@/services/redis/text"
+import {keys as OptionsKeys} from "@/services/redis/options";
+import {keys as TextKeys} from "@/services/redis/text"
 
 import '@radix-ui/colors/violetDark.css'
 import '@radix-ui/colors/blackA.css'
 import '@radix-ui/colors/mauve.css'
 import useMeasure from "react-use-measure";
+import ContextMenu from "@/components/ContextMenu/ContextMenu";
 
 type Props = {
   id: string
   editable?: boolean
-  options: Options
+  savedOptions: Options
 }
 
-export default function TextArea({id, editable = true, options}: Props) {
+const VARIANTS = [
+  {name: 'color', variant:colorVariants},
+  {name: 'position', variant: justifyVariants},
+  {name: 'alignment', variant: alignVariants},
+  {name: 'font', variant: TextAreaFont}
+] as const;
+
+const optionsReducer = (prevOptions: Options, payload: Partial<Options>) => ({
+  ...prevOptions,
+  ...payload
+})
+
+export default function TextArea({id, editable = true, savedOptions}: Props) {
   const [text, setText] = useState('');
-  const [color, setColor] = useState<Options["color"]>(options.color || 'violet')
-  const [alignment, setAlignment] = useState<Options['alignment']>(options.alignment || 'top')
-  const [position, setPosition] = useState<Options['position']>(options.position || 'left')
-  const [font, setFont] = useState<Options['font']>(options.font || 'eczar')
+  const [options, dispatchOptions] = useReducer(optionsReducer, savedOptions)
   const [ref, bounds] = useMeasure({debounce: 100});
-  const controls = useAnimationControls();
+  const animationControls = useAnimationControls()
 
-  const optionsKey = k.s(id)
-  const textKey = textKeys.s(id)
-
-  const {[optionsKey]: streamedOptions, [textKey]: streamedText} = useStream([
-    optionsKey,
-    textKey
-  ], editable)
-
-  useEffect(() => {
-    if(editable || !streamedOptions) return;
-    setFont(streamedOptions.font)
-    setColor(streamedOptions.color)
-    setAlignment(streamedOptions.alignment)
-    setPosition(streamedOptions.position)
-    controls.start({width: parseInt(streamedOptions.width), height: parseInt(streamedOptions.height)})
-  }, [controls, editable, streamedOptions])
-
-  useEffect(() => {
+  const optionsKey = OptionsKeys.stream(id)
+  const textKey = TextKeys.stream(id)
+  
+  const handleOptionsStream = useCallback(dispatchOptions, [dispatchOptions])
+  
+  const handleTextStream = useCallback((streamedText: { text: string }) => {
     if(editable || !streamedText) return
     setText(streamedText.text)
-  }, [editable, streamedText])
+  }, [editable])
 
-  const handleColorChange = (selectedColor: string) => {
-    setColor(selectedColor as Options["color"])
-  }
-
-  const handleAlignChange = (selectedAlignment: string) => {
-    setAlignment(selectedAlignment as Options["alignment"])
-  }
-
-  const handlePositionChange = (selectedPosition: string) => {
-    setPosition(selectedPosition as Options["position"])
-  }
+  useStream(
+    {
+      [optionsKey]: handleOptionsStream,
+      [textKey]: handleTextStream
+    }, editable
+  )
 
   const saveText = (text: string) => {
     if(!editable) return;
@@ -75,115 +67,61 @@ export default function TextArea({id, editable = true, options}: Props) {
     })
   }
 
-  const saveOption = () => {
+  useEffect(() => {
+    animationControls.start({
+      ...colorVariants[options.color],
+      ...alignVariants[options.alignment],
+      ...justifyVariants[options.position],
+      ...TextAreaFont[options.font].style,
+    })
+
+    if(!editable) {
+      animationControls.start({
+        width: parseInt(options.width),
+        height: parseInt(options.height)
+      })
+    }
+
     if(!editable) return;
+
     fetch(`/api/slide/${id}/options/save`, {
       method: 'POST',
       body: JSON.stringify({
-        options: {
-          color,
-          font,
-          position,
-          alignment,
-          height: bounds.height.toString(),
-          width: bounds.width.toString()
-        }
+        options
       })
     })
-  }
+  }, [animationControls, editable, id, options])
 
   useEffect(() => {
-    controls.start(colorVariants[color])
-    saveOption()
-  }, [controls, color])
-
-  useEffect(() => {
-    controls.start(alignVariants[alignment])
-    saveOption()
-  }, [controls, alignment])
-
-  useEffect(() => {
-    controls.start(justifyVariants[position])
-    saveOption()
-  }, [controls, position])
-
-  useEffect(() => {
-    controls.start({...TextAreaFont[font].style})
-    saveOption()
-  }, [controls, font])
-
-  useEffect(() => {
-    saveOption()
-  }, [bounds.height, bounds.width])
+    dispatchOptions({height: bounds.height.toString(), width: bounds.width.toString()})
+  }, [bounds.width, bounds.height])
 
   return (
-    <ContextMenu.Root>
-      <ContextMenu.Trigger disabled={!editable}>
-        <motion.div
-          animate={controls}
-          className={`${styles.root} ${editable && styles.root_editable} dark-theme ${TextAreaFont[font].className}`}
-          onInput={(e) => {
-            saveText(e.currentTarget.innerText)
-            setText(e.currentTarget.innerText);
-          }}
-          contentEditable={editable}
-          ref={ref}
-          suppressContentEditableWarning
-        >
-          {!editable && text}
-        </motion.div>
-      </ContextMenu.Trigger>
-      <ContextMenu.Portal>
-        <ContextMenu.Content className={`${styles.ContextMenuContent} dark-theme`}>
-          <ContextMenu.Label className={styles.ContextMenuLabel}>Color</ContextMenu.Label>
-          <ContextMenu.RadioGroup value={color} onValueChange={handleColorChange}>
-            {Object.keys(colorVariants).map((color) =>
-              <ContextMenu.RadioItem className={styles.ContextMenuRadioItem} value={color} key={color}>
-                <ContextMenu.ItemIndicator className={styles.ContextMenuItemIndicator}>
-                  ✔️
-                </ContextMenu.ItemIndicator>
-                {color}
-              </ContextMenu.RadioItem>
-            )}
-          </ContextMenu.RadioGroup>
-          <ContextMenu.Separator className={styles.ContextMenuSeparator}/>
-          <ContextMenu.Label className={styles.ContextMenuLabel}>Alignment</ContextMenu.Label>
-          <ContextMenu.RadioGroup value={alignment} onValueChange={handleAlignChange}>
-            {Object.keys(alignVariants).map((alignmentOption) =>
-              <ContextMenu.RadioItem className={styles.ContextMenuRadioItem} value={alignmentOption} key={alignmentOption}>
-                <ContextMenu.ItemIndicator className={styles.ContextMenuItemIndicator}>
-                  ✔️
-                </ContextMenu.ItemIndicator>
-                {alignmentOption}
-              </ContextMenu.RadioItem>
-            )}
-          </ContextMenu.RadioGroup>
-          <ContextMenu.Separator className={styles.ContextMenuSeparator}/>
-          <ContextMenu.Label className={styles.ContextMenuLabel}>Position</ContextMenu.Label>
-          <ContextMenu.RadioGroup value={position} onValueChange={handlePositionChange}>
-            {Object.keys(justifyVariants).map((position) =>
-              <ContextMenu.RadioItem className={styles.ContextMenuRadioItem} value={position} key={position}>
-                <ContextMenu.ItemIndicator className={styles.ContextMenuItemIndicator}>
-                  ✔️
-                </ContextMenu.ItemIndicator>
-                {position}
-              </ContextMenu.RadioItem>
-            )}
-          </ContextMenu.RadioGroup>
-          <ContextMenu.Separator className={styles.ContextMenuSeparator}/>
-          <ContextMenu.Label className={styles.ContextMenuLabel}>Font</ContextMenu.Label>
-          <ContextMenu.RadioGroup value={font} onValueChange={font => setFont(font as Options['font'])}>
-            {Object.keys(TextAreaFont).map((font) =>
-              <ContextMenu.RadioItem className={styles.ContextMenuRadioItem} value={font} key={font}>
-                <ContextMenu.ItemIndicator className={styles.ContextMenuItemIndicator}>
-                  ✔️
-                </ContextMenu.ItemIndicator>
-                {font}
-              </ContextMenu.RadioItem>
-            )}
-          </ContextMenu.RadioGroup>
-        </ContextMenu.Content>
-      </ContextMenu.Portal>
-    </ContextMenu.Root>
+    <ContextMenu
+      disabled={!editable}
+      items={VARIANTS.map(variant => ({
+          type: "RadioGroup",
+          label: variant.name,
+          value: options[variant.name],
+          withSeparator: true,
+          onValueChange: (value) => dispatchOptions({[variant.name]: value}),
+          options: Object.keys(variant.variant)
+      }))}
+    >
+      <motion.div
+        animate={animationControls}
+        layout
+        className={`${styles.root} ${editable && styles.root_editable} dark-theme ${TextAreaFont[options.font].className}`}
+        onInput={(e) => {
+          saveText(e.currentTarget.innerText)
+          setText(e.currentTarget.innerText);
+        }}
+        contentEditable={editable}
+        ref={ref}
+        suppressContentEditableWarning
+      >
+        {!editable && text}
+      </motion.div>
+    </ContextMenu>
   )
 }

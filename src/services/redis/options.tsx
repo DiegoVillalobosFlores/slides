@@ -4,14 +4,11 @@ import { z } from "zod"
 
 const OPTIONS_SUFFIX = 'OPTIONS';
 
-const keys = {
+export const keys = {
+  domain: OPTIONS_SUFFIX,
+  set: `${OPTIONS_SUFFIX}:SET`,
   options: (id:string) => `${OPTIONS_SUFFIX}:${id}:JSON`,
   stream: (id:string) => `${OPTIONS_SUFFIX}:${id}:STREAM`
-}
-
-export const k = {
-  o: keys.options,
-  s: keys.stream
 }
 
 const numberRegex = /\d/
@@ -35,16 +32,17 @@ export const OptionsSchema = z.object({
 export default function RedisOptionsService(redis: RedisClient) {
   return {
     createOptions: async (id: string, options: Options) => {
-      const parsing = OptionsSchema.safeParse(options)
-      if(!parsing.success) return parsing.error;
+      OptionsSchema.parse(options)
 
-      const result = await redis.json.set(k.o(id), '$', options)
-      redis.xAdd(k.s(id), '*', options)
+
+
+      const result = await redis.json.set(keys.options(id), '$', options)
+      redis.xAdd(keys.stream(id), '*', options)
 
       return result
     },
     getOptions: (id: string) => {
-      return redis.json.get(k.o(id)) as unknown as Options
+      return redis.json.get(keys.options(id)) as unknown as Options
     },
 
   }

@@ -27,7 +27,7 @@ export default async function Slide({id, isEditable}: Props) {
 					<br/>
 					<div>
 						<TextArea
-							options={options || defaultOptions}
+							savedOptions={options || defaultOptions}
 							id={id}
 							editable={isEditable}
 						/>
