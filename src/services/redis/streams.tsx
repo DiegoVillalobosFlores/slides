@@ -16,7 +16,7 @@ export default function RedisStreamsService(redis: RedisClient) {
     readBlockingStream: (streams: Array<{key: string, id: string}>) => {
       StreamsSchema.parse(streams)
       const options = {
-        BLOCK: 60 * 1000
+        BLOCK: 0
       };
 
       return  redis.xRead(streams, options)
