@@ -1,4 +1,4 @@
-import {Libre_Franklin} from "@next/font/google";
+import {Libre_Franklin} from "next/font/google";
 
 const CardFont = Libre_Franklin({
   display: "swap",

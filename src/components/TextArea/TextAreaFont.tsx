@@ -1,4 +1,4 @@
-import {Eczar, Karla, Andada_Pro} from "@next/font/google";
+import {Eczar, Karla, Andada_Pro} from "next/font/google";
 
 const eczar = Eczar({
   subsets: ['latin'],

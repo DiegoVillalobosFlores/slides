@@ -1,6 +1,5 @@
-import Slide from "@/components/Slide/Slide";
+import Home from "@/components/Home/Home";
 
-export default function Home() {
-  /* @ts-expect-error Server Component*/
-  return (<Slide id={'test'} isEditable={true}/>)
+export default function HomePage() {
+  return <Home/>
 }
