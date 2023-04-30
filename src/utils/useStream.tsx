@@ -25,7 +25,6 @@ export default function useStream<T extends [string, (arg: any) => void]>(
     Object.keys(handlers).reduce((acc, key) => ({...acc, [key]: '$'}),{})
   )
   const [errorCount, setErrorCount] = useState(0);
-  const [callerId, setCallerId] = useState('')
 
   const getData = useCallback(() => {
     setIsWaiting(true)
@@ -33,14 +32,12 @@ export default function useStream<T extends [string, (arg: any) => void]>(
       method: 'POST',
       body: JSON.stringify({
         streams: Object.entries(streams).map(([key, lastId]) => ({key, id: lastId})),
-        callerId
       })})
       .then(res => res.json() as unknown as {
         result: Array<StreamResponse<keyof typeof handlers, Parameters<typeof handlers[keyof typeof handlers]>[0]>>,
         callerId: string
       })
-      .then(({result, callerId} )=> {
-        setCallerId(callerId)
+      .then(({result} )=> {
         for(const streamResult of result) {
           handlers[streamResult.name](streamResult.messages[0].message)
           setStreams(prevStreams => ({...prevStreams, [streamResult.name]: streamResult.messages[0].id}))
@@ -54,7 +51,7 @@ export default function useStream<T extends [string, (arg: any) => void]>(
       .finally(() => {
         setIsWaiting(false)
       })
-  }, [callerId, handlers, streams, url])
+  }, [handlers, streams, url])
 
   useEffect(() => {
     if(
